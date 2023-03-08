@@ -17,6 +17,8 @@ int IR_PIN = 2;
 const uint64_t DRIVE_TIME = 1000;
 uint64_t motor_Stop = 0;
 
+const int WATER_THRESHOLD = 300;
+
 //variables
 bool isWet = false;
 bool isBottom = true;
@@ -45,29 +47,25 @@ void setup() {
 
 void dive() {
   if (motor_Stop == 0) {
-    // Serial.println("diving");  // print status change to the serial port
-    Serial.print("DIVE");
-    //myservo.attach(SERVO_PIN);                    // attaches the servo on "SERVO_PIN" to the servo object so that we can command the servo to turn
+    Serial.println("diving; motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));  // print status change to the serial port
+    //myservo.attach(SERVO_PIN); // attaches the servo on "SERVO_PIN" to the servo object so that we can command the servo to turn
     myservo.write(servoDiveCommand);  // drive servo clockwise, take in water & pull weight forward (pull counterweight & plunger towards servo)
     motor_Stop = millis() + DRIVE_TIME;
   } else if (motor_Stop < millis()) {
     myservo.write(servoCoastCommand);
-    Serial.print("CDIV");
-    //Serial.println("coasting (dive)");  // print status change to the serial port
+    Serial.println("diving (coast); motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
   }
 }
 
 void rise() {
   if (motor_Stop == 0) {
-    // Serial.println("rising");  // print status change to the serial port
-    Serial.print("RISE");
+    Serial.println("rising; motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
     //myservo.attach(SERVO_PIN);                    // attaches the servo on SERVO_PIN to the servo object
     myservo.write(servoRiseCommand);  // drive servo counter-clockwise, pull weight aft (push counterweight & plunger away from servo)
     motor_Stop = millis() + DRIVE_TIME;
   } else if (motor_Stop < millis()) {
-    //Serial.println("coasting (rise)");  // print status change to the serial port
     myservo.write(servoCoastCommand);
-    Serial.print("CRIS");
+    Serial.println("rising (coast); motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
   }
 
   //delay(delayTime);
@@ -78,10 +76,10 @@ void rise() {
 void checkWet(bool &isWet) {
   waterVal = analogRead(WATER_PIN);
 
-  if (waterVal <= 100) {
+  if (waterVal <= WATER_THRESHOLD) {
     //Serial.println("Float is dry");
     isWet = false;
-  } else if (waterVal > 100) {
+  } else if (waterVal > WATER_THRESHOLD) {
     // Serial.println("Float is wet");
     isWet = true;
   }
@@ -190,17 +188,19 @@ void loop() {
       break;
     case 2: /* falling state */
       Serial.println("state 2");
-      while (!isBottom) {
+      if (!isBottom) {
         dive();
+      } else {
+        state = 3;
       }
-      state = 3;
       break;
     case 3:
       Serial.println("state 3");
-      while (isWet) {
+      if (isWet) {
         rise();
+      } else {
+        state = 1;
       }
-      state = 1;
       break;
     default:
       Serial.println("Reached default in state machine (very bad) :(");

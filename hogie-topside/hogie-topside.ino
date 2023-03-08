@@ -116,8 +116,14 @@ void loop() {
     while (digitalRead(3) == HIGH) {
       // Wait for hogie until button press
       long rx_time = recieve();
-      if (rx_time != -1)
+
+
+      if (rx_time != -1) {
+        // transmit -1 to release the hoagie's blocking recieve() function
+        transmit(-1);
+
         Serial.println(rx_time);
+      }
     }
   }
 }
