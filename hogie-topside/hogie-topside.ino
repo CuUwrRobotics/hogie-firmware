@@ -107,9 +107,9 @@ void loop() {
   // When we get here, the hogie has properly calibrated it's time
   while (true) {
     Serial.println("Writing drop message");
-    transmit(0xFA110000);
 
     while (digitalRead(3) == LOW) {
+      transmit(0xFA110000);
       // Wait for button release
     }
 

@@ -12,7 +12,7 @@ Adafruit_SoftServo myservo;
 RH_ASK driver;  // reciever CS=10 , reciever data = 11, transmitter data = 12
 //pins
 int WATER_PIN = A0;
-int SERVO_PIN = 9;
+int SERVO_PIN = 3;
 int IR_PIN = 2;
 const uint64_t DRIVE_TIME = 1000;
 uint64_t motor_Stop = 0;
@@ -112,9 +112,14 @@ void printull(uint64_t num) {
 uint64_t recieve() {
   uint8_t buf[sizeof(uint64_t)] = { 0 };
   uint8_t buflen = sizeof(uint64_t);
+  long timeout = millis() + 500;
   // Non-blocking check
   digitalWrite(RX_CS_PIN, HIGH);
-  while (!driver.recv(buf, &buflen)) {}
+  while (!driver.recv(buf, &buflen)) {
+    if(millis() > timeout) {
+      return -1;
+    }
+  }
   Serial.print("RX: 0x");
   printull((uint64_t)(*((uint64_t *)buf)));
   Serial.println();
