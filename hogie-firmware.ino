@@ -3,7 +3,7 @@
 // #include <Servo.h>  // Arduino's Servo library did not work, timer conflicts with RadioHead
 #include <Adafruit_SoftServo.h>  // We used this servo instead
 #include <SPI.h>
-
+//#include <TimeLib.h>
 const int RX_CS_PIN = 9;
 
 // Servo myservo;
@@ -29,6 +29,9 @@ static byte servoCoastCommand = 90;
 uint64_t unix_epoch_offset = 0;  //
 uint64_t start_time = 0;
 uint64_t current_time = start_time + current_time;
+unsigned long ThenTime; // comparing time 
+unsigned long NowTime; // comparing time 
+bool voltage; // Don't know what pin reading from yet 
 
 
 void setup() {
@@ -46,32 +49,54 @@ void setup() {
 }
 
 void dive() {
+  myservo.write(servoDiveCommand);
+  Serial.println("Servo is divin");
+  transmit(trueTime());
+  
+/*
+  Serial.println("line 54");
+  if (!voltage ) {motor_Stop=1;}
   if (motor_Stop == 0) {
+    Serial.println("line 57");
+  ThenTime&=millis();
+  NowTime=millis();
+       
+  while (((NowTime-5000) < ThenTime) && (voltage =1)) //arbitrary time spent in loop to define amount of water suck 
+  {
     Serial.println("diving; motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));  // print status change to the serial port
     //myservo.attach(SERVO_PIN); // attaches the servo on "SERVO_PIN" to the servo object so that we can command the servo to turn
     myservo.write(servoDiveCommand);  // drive servo clockwise, take in water & pull weight forward (pull counterweight & plunger towards servo)
     motor_Stop = millis() + DRIVE_TIME;
+  }
   } else if (motor_Stop < millis()) {
     myservo.write(servoCoastCommand);
     Serial.println("diving (coast); motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
   }
+*/
 }
 
 void rise() {
   if (motor_Stop == 0) {
+    ThenTime= millis();
+    NowTime= millis();
+  millis();
+  
+  while ((NowTime-6000) < ThenTime) //arbitrary time spent in loop to define amount of water pushed out 
+  {
     Serial.println("rising; motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
     //myservo.attach(SERVO_PIN);                    // attaches the servo on SERVO_PIN to the servo object
     myservo.write(servoRiseCommand);  // drive servo counter-clockwise, pull weight aft (push counterweight & plunger away from servo)
     motor_Stop = millis() + DRIVE_TIME;
+  }
   } else if (motor_Stop < millis()) {
     myservo.write(servoCoastCommand);
     Serial.println("rising (coast); motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
   }
-
+  }
   //delay(delayTime);
   //myservo.detach();                             // stop the servo, detaches the servo on SERVO_PIN from the servo object
   // Serial.println("coasting (rise)");  // print status change to the serial port
-}
+
 
 void checkWet(bool &isWet) {
   waterVal = analogRead(WATER_PIN);
@@ -163,12 +188,15 @@ void loop() {
   switch (state) {
     case 0: /* Callibration State */
       Serial.println("state 0");
-
+      
+      
+      
       message_temp = recieve();
 
       while (message_temp != 0xDEADBEEF) {
         message_temp = recieve();
         delay(10);
+        
       }
       state = 1;
       break;
@@ -208,7 +236,7 @@ void loop() {
       }
       break;
     default:
-      Serial.println("Reached default in state machine (very bad) :(");
+      Serial.println("Reached default in state machine (very bad) :-(");
       while (1) {}
       break;
   }
