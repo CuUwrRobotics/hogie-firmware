@@ -14,6 +14,7 @@ RH_ASK driver;  // reciever CS=10 , reciever data = 11, transmitter data = 12
 int WATER_PIN = A0;
 int SERVO_PIN = 3;
 int IR_PIN = 2;
+int BEAM_BREAK_PIN=A3;
 const uint64_t DRIVE_TIME = 1000;
 uint64_t motor_Stop = 0;
 
@@ -31,21 +32,32 @@ uint64_t start_time = 0;
 uint64_t current_time = start_time + current_time;
 unsigned long ThenTime; // comparing time 
 unsigned long NowTime; // comparing time 
-bool voltage; // Don't know what pin reading from yet 
+//digitalRead(VOLTAGE_PIN,HIGH);  
 
 
 void setup() {
+  
   Serial.begin(9600);
   pinMode(WATER_PIN, INPUT);
   pinMode(SERVO_PIN, INPUT);
   pinMode(IR_PIN, INPUT);
   myservo.attach(SERVO_PIN);
 
+   Serial.println("Setup...");
+
   if (!driver.init())
     Serial.println("radio init failed");
 
   pinMode(RX_CS_PIN, OUTPUT);
   digitalWrite(RX_CS_PIN, HIGH);
+  Serial.println("Pins defined");
+
+  Serial.println("Waiting to break beam");
+  while(digitalRead(BEAM_BREAK_PIN)==HIGH){
+    myservo.write(servoDiveCommand);
+  }
+  Serial.println("Beam has been broken");
+  myservo.write(servoCoastCommand);
 }
 
 void dive() {
@@ -53,15 +65,14 @@ void dive() {
   Serial.println("Servo is divin");
   transmit(trueTime());
   
-/*
+// fix Below 
   Serial.println("line 54");
-  if (!voltage ) {motor_Stop=1;}
   if (motor_Stop == 0) {
     Serial.println("line 57");
   ThenTime&=millis();
   NowTime=millis();
        
-  while (((NowTime-5000) < ThenTime) && (voltage =1)) //arbitrary time spent in loop to define amount of water suck 
+  while (((NowTime-9000) < ThenTime)) //arbitrary time spent in loop to define amount of water suck 
   {
     Serial.println("diving; motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));  // print status change to the serial port
     //myservo.attach(SERVO_PIN); // attaches the servo on "SERVO_PIN" to the servo object so that we can command the servo to turn
@@ -72,7 +83,7 @@ void dive() {
     myservo.write(servoCoastCommand);
     Serial.println("diving (coast); motor_Stop=" + String((uint32_t)motor_Stop) + "; servoCoastCommand=" + String(servoCoastCommand) + "; waterVal=" + String(analogRead(WATER_PIN)) + "; digitalRead(IR_PIN)=" + String(digitalRead(IR_PIN)));
   }
-*/
+
 }
 
 void rise() {
