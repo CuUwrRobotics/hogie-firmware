@@ -13,6 +13,8 @@ void setup() {
 
   pinMode(RX_CS_PIN, OUTPUT);
   digitalWrite(RX_CS_PIN, HIGH);
+
+  Serial.println("Ready");
 }
 
 void printull(uint64_t num) {
@@ -76,8 +78,7 @@ void loop() {
     // Transmit while we wait for button release
     transmit(0xDEADBEEF);
   }
-  while (digitalRead(3) == HIGH)  // Wait for button press
-    ;
+
   Serial.println("Calibrating time...");
 
   uint64_t tx_time = 16776337352ull;  // About Feb 28 8:20 PM
