@@ -199,6 +199,7 @@ void loop() {
   Serial.print("State #" + String(state));
   Serial.print(": b" + String((byte)bottomedOut()));
   Serial.print(" w" + String((byte)waterSensorWet()));
+  
   Serial.println();
 
 
