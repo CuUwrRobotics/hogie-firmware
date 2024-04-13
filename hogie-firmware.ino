@@ -1,174 +1,252 @@
 
 #include <RH_ASK.h>
-// #include <Servo.h>  // Arduino's Servo library did not work, timer conflicts with RadioHead
-#include <Adafruit_SoftServo.h> // We used this servo instead
+#include <Adafruit_SoftServo.h>  // We used this servo instead
 #include <SPI.h>
 
 
-
-// Servo myservo;
 Adafruit_SoftServo myservo;
 
-RH_ASK driver; // reciever CS=10 , reciever data = 11, transmitter data = 12 
-//pins
-int WATER_PIN = A0;
-int SERVO_PIN = 9;
-int IR_PIN = 2;
-const long int DRIVE_TIME = 1000;
-long int motor_Stop = 0;
+// Pin definitions
+RH_ASK driver;  // reciever data = 11, transmitter data = 12
+const int PIN_DIST_SENSOR = 2;
+const int PIN_SERVO = 3;
+const int PIN_RX_CS = 9;
+const int PIN_WATER_SENSOR = A0;
+const int PIN_SERVO_LIMIT = A3;
 
-//variables
-bool isWet = false;
-bool isBottom = true;
-int waterVal;                        //Analog value of water
-static byte servoDiveCommand = 0;    // angle value that the dive method sends to the servo
-static byte servoRiseCommand = 180;  // angle value that the rise method sends to the servo
-static byte servoCoastCommand = 90;
-long int time_elapsed = millis();  //
-long int start_time = 0;
-long int current_time = start_time + current_time;
+// Pre-measured timings and thresholds
+const uint64_t TIME_DIVE = 10000;  // Time for the motor to pull the plunger back
+const uint64_t TIME_RISE = TIME_DIVE;  // Time for the motor to push the plunger forwards
 
+const int WATER_SENSOR_THRESHOLD = 300;
+
+const uint8_t SERVO_DIVE_COMMAND = 0;    // Angle value that the servo takes as CW
+const uint8_t SERVO_RISE_COMMAND = 179;  // Angle value that the servo takes as CCW
+const uint8_t SERVO_COAST_COMMAND = 90;  // Angle value that the servo takes as steady
+
+// Stores the offset from our epoch to the given unix epoch
+uint64_t unix_epoch_offset = 0;
+
+void refreshServo() {
+  static unsigned long next_servo_refresh = 0;
+
+  if (next_servo_refresh < millis()) {
+    // Call 'refresh' only every 20ms (~50Hz)
+    next_servo_refresh = millis() + 19;
+    noInterrupts();  // The delay done in 'myservo.refresh()' is offset by around 30% by interrupts
+    myservo.refresh();
+    interrupts();
+  }
+}
 
 void setup() {
+
   Serial.begin(9600);
-  pinMode(WATER_PIN, INPUT);
-  pinMode(SERVO_PIN, INPUT);
-  pinMode(IR_PIN, INPUT);
-  myservo.attach(SERVO_PIN);
+  Serial.println("Setting up...");
+
+  pinMode(PIN_WATER_SENSOR, INPUT);
+  pinMode(PIN_SERVO, INPUT);
+  pinMode(PIN_DIST_SENSOR, INPUT);
+  pinMode(PIN_SERVO_LIMIT, INPUT_PULLUP);
+  pinMode(PIN_RX_CS, OUTPUT);
+  digitalWrite(PIN_RX_CS, HIGH);
+
+  myservo.attach(PIN_SERVO);
 
   if (!driver.init())
     Serial.println("radio init failed");
+
+  if (digitalRead(PIN_SERVO_LIMIT) == HIGH) {
+    Serial.println("Waiting to un-break beam");
+    myservo.write(SERVO_DIVE_COMMAND);
+    while (digitalRead(PIN_SERVO_LIMIT) == HIGH) {
+      refreshServo();
+    }
+  }
+  Serial.println("Waiting to break beam");
+  myservo.write(SERVO_RISE_COMMAND);
+  while (digitalRead(PIN_SERVO_LIMIT) == LOW) {
+    refreshServo();
+  }
+  Serial.println("Beam has been broken");
+  myservo.write(SERVO_COAST_COMMAND);
+  refreshServo();
 }
 
-void dive() {
-  if (motor_Stop == 0) {
-    // Serial.println("diving");  // print status change to the serial port
-    Serial.print("DIVE");
-    //myservo.attach(SERVO_PIN);                    // attaches the servo on "SERVO_PIN" to the servo object so that we can command the servo to turn
-    myservo.write(servoDiveCommand);  // drive servo clockwise, take in water & pull weight forward (pull counterweight & plunger towards servo)
-    motor_Stop = millis() + DRIVE_TIME;
-  } else if (motor_Stop < millis()) {
-    myservo.write(servoCoastCommand);
-    Serial.print("CDIV");
-    //Serial.println("coasting (dive)");  // print status change to the serial port
-  }
+bool bottomedOut() {
+  return digitalRead(PIN_DIST_SENSOR) == LOW;
 }
 
-void rise() {
-  if (motor_Stop == 0) {
-    // Serial.println("rising");  // print status change to the serial port
-    Serial.print("RISE");
-    //myservo.attach(SERVO_PIN);                    // attaches the servo on SERVO_PIN to the servo object
-    myservo.write(servoRiseCommand);  // drive servo counter-clockwise, pull weight aft (push counterweight & plunger away from servo)
-    motor_Stop = millis() + DRIVE_TIME;
-  } else if (motor_Stop < millis()) {
-    //Serial.println("coasting (rise)");  // print status change to the serial port
-    myservo.write(servoCoastCommand);
-    Serial.print("CRIS");
-  }
-
-  //delay(delayTime);
-  //myservo.detach();                             // stop the servo, detaches the servo on SERVO_PIN from the servo object
-  // Serial.println("coasting (rise)");  // print status change to the serial port
+bool waterSensorWet() {
+  return analogRead(PIN_WATER_SENSOR) > WATER_SENSOR_THRESHOLD;
 }
 
-void checkWet(bool &isWet) {
-  waterVal = analogRead(WATER_PIN);
+bool diveCompleted() {
+  static uint32_t motor_stop_time = 0;
+  static bool coasting = false;
 
-  if (waterVal <= 100) {
-    //Serial.println("Float is dry");
-    isWet = false;
-  } else if (waterVal > 100) {
-    // Serial.println("Float is wet");
-    isWet = true;
+  if (!coasting) {
+    if (motor_stop_time == 0) {
+      // Just started diving; set up vars
+      motor_stop_time = millis() + TIME_DIVE;
+    }
+
+    if (motor_stop_time > millis()) {
+      // Not at motor_stop_time yet, keep moving the servo
+      myservo.write(SERVO_DIVE_COMMAND);
+    } else {
+      // Enter coast mode
+      myservo.write(SERVO_COAST_COMMAND);
+      motor_stop_time = 0;  // Allow the time to reset next time we dive
+      coasting = true;
+    }
+  } else {
+    // Dive completed; coast until we reach the bottom
+    myservo.write(SERVO_COAST_COMMAND);
+    if (bottomedOut()) {
+      coasting = false;  // Start the next dive by diving (not coasting)
+      return true;
+    }
   }
+  return false;
 }
 
-void checkBottom(bool &isBottom) {
-  if (digitalRead(IR_PIN) == LOW) {
-    //Serial.println("Float is at the Bottom");
-    isBottom = true;
+bool riseCompleted() {
+  static uint32_t motor_stop_time = 0;
+  static bool coasting = false;
+
+  if (!coasting) {
+    if (motor_stop_time == 0) {
+      // Just started rising; set up vars
+      motor_stop_time = millis() + TIME_RISE;
+    }
+
+    if (motor_stop_time > millis()) {
+      // Not at motor_stop_time yet, keep moving the servo
+      myservo.write(SERVO_RISE_COMMAND);
+    } else {
+      // Enter coast mode
+      myservo.write(SERVO_COAST_COMMAND);
+      motor_stop_time = 0;  // Allow the time to reset next time we rise
+      coasting = true;
+    }
+  } else {
+    // Rise completed; coast until we reach the bottom
+    myservo.write(SERVO_COAST_COMMAND);
+    if (!waterSensorWet()) {
+      coasting = false;  // Start the next rise by rising (not coasting)
+      return true;
+    }
   }
-  if (digitalRead(IR_PIN) == HIGH) {
-    // Serial.println("Float is not at the Bottom");
-    isBottom = false;
+  return false;
+}
+
+void printull(uint64_t num) {
+  for (int i = 0; i < sizeof(num); i++) {
+    if ((uint8_t)((num >> (sizeof(num) - i - 1) * 8) & 0xFF) < 0x1F) {
+      Serial.print(0);
+    }
+    Serial.print((uint8_t)((num >> (sizeof(num) - i - 1) * 8) & 0xFF), HEX);
   }
 }
 
 /**
  * recieve data from radio reciever , returns -1 if no data found
  */
-long int recieve() {
-  uint8_t buf[sizeof(long int)];
-  uint8_t buflen = sizeof(long int);
+uint64_t recieve() {
+  uint8_t buf[sizeof(uint64_t)] = { 0 };
+  uint8_t buflen = sizeof(uint64_t);
+  long timeout = millis() + 500;
   // Non-blocking check
-  if (driver.recv(buf, &buflen)) {
-    return *((long *)buf);
+  digitalWrite(PIN_RX_CS, HIGH);
+  while (!driver.recv(buf, &buflen)) {
+    // refreshServo();
+    if (millis() > timeout) {
+      return -1;
+    }
   }
-  return -1;
+  Serial.print("RX: 0x");
+  printull((uint64_t)(*((uint64_t *)buf)));
+  Serial.println();
+  return *((uint64_t *)buf);
 }
 
 /**
  * transmits time over radio transmitter 
  */
-void transmit(long time) {
-  driver.send((uint8_t *)time, sizeof(time));
+void transmit(uint64_t time) {
+  digitalWrite(PIN_RX_CS, LOW);
+  Serial.print("TX: 0x");
+  printull(time);
+  Serial.println();
+  driver.send((uint8_t *)&time, sizeof(time));
   driver.waitPacketSent();
+  digitalWrite(PIN_RX_CS, HIGH);
+}
+
+uint64_t trueTime() {
+  return unix_epoch_offset + (millis()) / 1000;
 }
 
 int state = 0;
 
 void loop() {
-  checkWet(isWet);
-  checkBottom(isBottom);
+  refreshServo();
+
   static bool endstop_switch;
+  static uint64_t message_temp;
+
+  Serial.print("State #" + String(state));
+  Serial.print(": b" + String((byte)bottomedOut()));
+  Serial.print(" w" + String((byte)waterSensorWet()));
+  
   Serial.println();
-  Serial.print(state);
-  Serial.print(",");
-  Serial.print(isBottom);
-  Serial.print(",");
-  Serial.print(isWet);
-  Serial.print(",");
-  Serial.print(motor_Stop);
-  Serial.print(",");
 
 
   switch (state) {
     case 0: /* Callibration State */
+      // Serial.println("state: init");
 
-      int message = recieve();
-
-      while (message != 0xDEADBEEF) {
-        message = recieve();
+      message_temp = recieve();
+      Serial.println(String(int(message_temp)));
+      if (message_temp == 0xDEADBEEF) {
+        state = 1;
       }
-      state = 1;
-
       break;
     case 1: /* Wait State */
-      unsigned long timbuktu = millis() + 1000;
-      unsigned long timid;
-      transmit(timid);
-      while (millis() < timbuktu) {
-        timid = recieve();
-        if (timid == 010010) {
+      Serial.println("state: wait for time");
+      transmit(trueTime());
+      message_temp = recieve();
+      if (message_temp != -1) {
+        if (message_temp == 0xFA110000) {
+          Serial.println("Got drop");
           state = 2;
           break;
+        } else {
+          unix_epoch_offset = message_temp - (millis() / 1000);
+          Serial.print("Calibrated offset: ");
+          printull(unix_epoch_offset);
+          Serial.print("; Calibrated offset gives: ");
+          printull(trueTime());
+          Serial.println();
         }
       }
-      transmit(current_time);
-
       break;
     case 2: /* falling state */
-      while (!isBottom) {
-        dive();
+      Serial.println("state: dive");
+      if (diveCompleted()) {
+        state = 3;
       }
-      state = 3;
       break;
     case 3:
-      while (isWet) {
-        rise();
+      Serial.println("state: rise");
+      if (riseCompleted()) {
+        state = 1;
       }
-      state = 1;
+      break;
+    default:
+      Serial.println("Reached default in state machine (very bad) :-(");
+      while (1) {}
       break;
   }
 }
