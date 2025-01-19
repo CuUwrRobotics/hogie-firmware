@@ -1,4 +1,3 @@
-
 class PID{
     public:
         PID(float constantP, float constantD, float constantI){kP = constantP; kD = constantD; kI = constantI;}
@@ -6,7 +5,8 @@ class PID{
 
         float calc(float setpoint, float measurement, float currTime){
             float error = setpoint - measurement;
-            float timeDiff = currTime - prevTime;
+            float timeDiff = currTime - prevTime < 0.5 ? currTime - prevTime : 0;
+
             float total = calcP(error) + calcI(error, timeDiff) + calcD(error, timeDiff);
             prevTime = currTime;
             return total;
@@ -21,7 +21,7 @@ class PID{
             return kP * error;
         }
         float calcD(float error, float timeDiff){
-            float total = (error - prevError)/(timeDiff);
+            float total = (error - prevError)/(timeDiff == 0? 1000 : timeDiff);
             prevError = error;
             return total;
         }
