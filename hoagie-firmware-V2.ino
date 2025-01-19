@@ -18,10 +18,13 @@
 #include <Arduino.h>
 #include <nRF24L01.h>
 #include <Adafruit_SoftServo.h>
+#include <CytronMotorDriver.h>
+#include "PID.h"
 
 /* Pin definitions (digital) */
 const string TEAM_NAME = "CUUWR";
-const int PIN_SERVO = 3;
+const int PIN_SERVO_LEFT = 3;
+const int PIN_SERVO_RIGHT = -1;//find value
 const RF24 SENDER(7, 8);           // Transmitter: CE pin, CSN pin
 const RF24 RECEIVER(9, 10);        // Receiver: CE pin, CSN pin
 const byte S_ADDRESS[6] = "00001"; // Address of the transmitter
@@ -73,16 +76,22 @@ void setup()
   Serial.begin(9600);
 
   pinMode(PIN_DIST_SENSOR, INPUT);
-  pinMode(PIN_SERVO, 9E_SENSOR, INPUT);
+  pinMode(PIN_SERVO_LEFT, 9E_SENSOR, INPUT);
+  pinMod(PIN_SERVO_RIGHT, INPUT);
   pinMode(PIN_SERVO_LIMIT, INPUT_PULLUP);
 
-  myservo.attach(PIN_SERVO);
+  CytronMD testServo(PWM_PWM, PIN_SERVO_LEFT, PIN_SERVO_RIGHT);//could be looking for different pins
+
+  Adafruit_SoftServo myservo;
+  myservo.attach(PIN_SERVO_RIGHT);
 
   // Additional setup for pressure sensor calibration if needed
   // For example, you may want to take a baseline pressure reading when the pool is empty
   // and use that as a reference for depth calculations.
 
   Serial.println("Setting up Hoagie Firmware V2...");
+
+  PID PIDController(0,0,0);
 }
 
 void transmit(string message)
@@ -239,6 +248,8 @@ void loop()
         data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR));
         timer = millis();
       }
+      testServo.setSpeed(PIDController.calc(-2.5, -1 * getDepth(), millis()));
+      //myservo.write(SERVO_DIVE);
     }
     if (diveCompleted())
     {
@@ -256,6 +267,8 @@ void loop()
         data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR));
         timer = millis();
       }
+      testServo.setSpeed(PIDController.calc(0, -1 * getDepth(), millis()));
+      //myservo.write(SERVO_RISE);
     }
     if (riseCompleted())
     {
