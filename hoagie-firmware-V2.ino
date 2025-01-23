@@ -18,13 +18,13 @@
 #include <Arduino.h>
 #include <nRF24L01.h>
 #include <Adafruit_SoftServo.h>
-#include <CytronMotorDriver.h>
 #include "PID.h"
+#include <ezButton.h>
 
 /* Pin definitions (digital) */
 const string TEAM_NAME = "CUUWR";
 const int PIN_SERVO_LEFT = 3;
-const int PIN_SERVO_RIGHT = -1;//find value
+const int PIN_LIMIT_SWITCH = -1;
 const RF24 SENDER(7, 8);           // Transmitter: CE pin, CSN pin
 const RF24 RECEIVER(9, 10);        // Receiver: CE pin, CSN pin
 const byte S_ADDRESS[6] = "00001"; // Address of the transmitter
@@ -80,10 +80,11 @@ void setup()
   pinMod(PIN_SERVO_RIGHT, INPUT);
   pinMode(PIN_SERVO_LIMIT, INPUT_PULLUP);
 
-  CytronMD testServo(PWM_PWM, PIN_SERVO_LEFT, PIN_SERVO_RIGHT);//could be looking for different pins
-
   Adafruit_SoftServo myservo;
   myservo.attach(PIN_SERVO_RIGHT);
+
+  ezButton limitSwitch(PIN_LIMIT_SWITCH);
+  limitSwitch.setDebounceTime(50);
 
   // Additional setup for pressure sensor calibration if needed
   // For example, you may want to take a baseline pressure reading when the pool is empty
@@ -91,7 +92,7 @@ void setup()
 
   Serial.println("Setting up Hoagie Firmware V2...");
 
-  PID PIDController(0,0,0);
+  PID PIDController(0.01,0,0, limitSwitch);
 }
 
 void transmit(string message)
@@ -248,8 +249,8 @@ void loop()
         data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR));
         timer = millis();
       }
-      testServo.setSpeed(PIDController.calc(-2.5, -1 * getDepth(), millis()));
       //myservo.write(SERVO_DIVE);
+      myservo.write(PIDController.calc(-2.5, -1 * getDepth(), milis()));
     }
     if (diveCompleted())
     {
@@ -267,8 +268,8 @@ void loop()
         data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR));
         timer = millis();
       }
-      testServo.setSpeed(PIDController.calc(0, -1 * getDepth(), millis()));
-      //myservo.write(SERVO_RISE);
+      //testServo.setSpeed(PIDController.calc(0, -1 * getDepth(), millis()));
+      myservo.write(PIDController.calc(0, -1 * getDepth(), milis()));
     }
     if (riseCompleted())
     {
@@ -293,5 +294,4 @@ void loop()
     }
     break;
   }
-}
 }

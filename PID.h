@@ -1,6 +1,7 @@
+#include <ezButton.h>
 class PID{
     public:
-        PID(float constantP, float constantD, float constantI){kP = constantP; kD = constantD; kI = constantI;}
+        PID(float constantP, float constantD, float constantI, ezButton &limitSwitch){kP = constantP; kD = constantD; kI = constantI;}
         PID(){PID(1, 0, 0);}
 
         float calc(float setpoint, float measurement, float currTime){
@@ -9,7 +10,7 @@ class PID{
 
             float total = calcP(error) + calcI(error, timeDiff) + calcD(error, timeDiff);
             prevTime = currTime;
-            return total;
+            return limitSwitch.isPressed()? 0 : total;
         }
 
     private:
