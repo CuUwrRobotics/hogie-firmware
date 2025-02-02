@@ -26,7 +26,7 @@ const uint8_t SERVO_COAST = 90;
 MS5837 pressure_sensor;
 ArduPID PID;
 Servo myServo;
-double PID_input, PID_output, setpoint;
+double PID_input, PID_output, setpoint = 2.5;
 const double kP = 0, kI = 0, kD = 0;
 uint64_t detectionStartTime = 0;
 float depth = 0.0;
@@ -112,6 +112,7 @@ void loop() {
             if (diveCompleted()) {
                 state = 3;
                 PID.reset();
+                setpoint = 0;
             }
             break;
         case 3: // Rising
