@@ -17,21 +17,26 @@
 #include <RH_ASK.h>
 #include <Arduino.h>
 #include <nRF24L01.h>
-#include <Adafruit_SoftServo.h>
-#include "PID.h"
-#include <ezButton.h>
+//#include <Adafruit_SoftServo.h>
+//#include <ezButton.h>
+#include "MS5837.h"
+#include <Wire.h>
+#include "ArduPID.h"
+#include <Servo.h>
+
+MS5837 pressure_sensor;
 
 /* Pin definitions (digital) */
-const string TEAM_NAME = "CUUWR";
+const String TEAM_NAME = "CUUWR";
 const int PIN_SERVO_LEFT = 3;
-const int PIN_LIMIT_SWITCH = -1;
+//const int PIN_LIMIT_SWITCH = -1;
 const RF24 SENDER(7, 8);           // Transmitter: CE pin, CSN pin
 const RF24 RECEIVER(9, 10);        // Receiver: CE pin, CSN pin
 const byte S_ADDRESS[6] = "00001"; // Address of the transmitter
 const byte R_ADDRESS[6] = "00002"; // Address of the receive
 /* Pin definitions (analog) */
 const int PIN_PRESSURE_SENSOR = A0;
-const int PIN_SERVO_LIMIT = A3;
+//const int PIN_SERVO_LIMIT = A3;
 
 /* Pressure Sensor */
 const float BL_PRESSURE = 101325.0;     // Baseline Barometric Pressure
@@ -45,7 +50,13 @@ const float POOL_DEPTH = 10;          // feet
 /* Servo Commands */
 const uint8_t SERVO_DIVE = 0;
 const uint8_t SERVO_RISE = 180;
-const uint9_t SERVO_COAST = 90;
+const uint8_t SERVO_COAST = 90;
+
+ArduPID PID;
+Servo myServo;
+double PID_input, PID_output, setpoint;
+const kP = 0, kI = 0, kD = 0;
+
 
 /** Refresh Servo function
  * refreshServo()
@@ -53,7 +64,7 @@ const uint9_t SERVO_COAST = 90;
 
 struct packet
 {
-  u_int32_t time;
+  uint32_t time;
   float pressure;
 };
 
@@ -74,17 +85,21 @@ void refreshServo()
 void setup()
 {
   Serial.begin(9600);
+  Wire.begin();
 
   pinMode(PIN_DIST_SENSOR, INPUT);
-  pinMode(PIN_SERVO_LEFT, 9E_SENSOR, INPUT);
+  pinMode(PIN_SERVO_LEFT, INPUT);
   pinMod(PIN_SERVO_RIGHT, INPUT);
-  pinMode(PIN_SERVO_LIMIT, INPUT_PULLUP);
+  //pinMode(PIN_SERVO_LIMIT, INPUT_PULLUP);
 
   Adafruit_SoftServo myservo;
   myservo.attach(PIN_SERVO_RIGHT);
 
-  ezButton limitSwitch(PIN_LIMIT_SWITCH);
-  limitSwitch.setDebounceTime(50);
+  sensor.setModel(MS5837::MS5837_30BA);
+  sensor.setFluidDensity(997);
+
+  //ezButton limitSwitch(PIN_LIMIT_SWITCH);
+  //limitSwitch.setDebounceTime(50);
 
   // Additional setup for pressure sensor calibration if needed
   // For example, you may want to take a baseline pressure reading when the pool is empty
@@ -92,10 +107,13 @@ void setup()
 
   Serial.println("Setting up Hoagie Firmware V2...");
 
-  PID PIDController(0.01,0,0, limitSwitch);
+  PID.begin(&input, &output, &setpoint, kP, kI, kD);
+  PID.setOutputLimits(-90, 90);
+
+  myServo.attach(5);
 }
 
-void transmit(string message)
+void transmit(String message)
 {
   // Transmit Code
   SENDER.begin();
@@ -140,7 +158,8 @@ float getDepth()
   // Pressure Sensor to Depth Code
   float density = 1.025; // kg/m^3
   float gravity = 9.81;  // m/s^2
-  float pressure = analogRead(PIN_PRESSURE_SENSOR);
+  //float pressure = analogRead(PIN_PRESSURE_SENSOR);
+  float pressure = pressure_sensor.pressure();
   float depth = pressure / (density * gravity);
   // meters to feet
   depth = depth * 3.28084;
@@ -183,6 +202,7 @@ bool riseCompleted()
     return false;
   }
 }
+
 int64_t packetToBin(packet data[], TEAM_NAME)
 {
   int64_t bin = 0;
@@ -199,7 +219,7 @@ void loop()
   refreshServo();
   static bool endstop_switch;
   static uint64_t message;
-  static uint8_t state = 0;
+  static uint8_t state = 2;//very important this gets changed back to 1
   packet data[] = [128];
   // start timer
   static uint64_t timer = millis();
@@ -226,6 +246,7 @@ void loop()
       {
         Serial.println("Got drop");
         state = 2;
+        PID.start();
         break;
       }
       else
@@ -240,9 +261,11 @@ void loop()
     }
     break;
   case 2: /* falling state */
+    
     Serial.println("state: dive");
     while (!diveCompleted())
     {
+      PID_input = getDepth();
       // create a new packet every 5 seconds and add to data array
       if (millis() - timer >= 5000)
       {
@@ -250,11 +273,13 @@ void loop()
         timer = millis();
       }
       //myservo.write(SERVO_DIVE);
-      myservo.write(PIDController.calc(-2.5, -1 * getDepth(), milis()));
+      PID.compute();
+      myservo.write(PID_output + 90);
     }
     if (diveCompleted())
     {
       state = 3;
+      PID.reset();
     }
     break;
 
@@ -262,6 +287,7 @@ void loop()
     Serial.println("state: rise");
     while (!riseCompleted())
     {
+      PID_input = getDepth();
       // create a new packet every 5 seconds and add to data array
       if (millis() - timer >= 5000)
       {
@@ -269,11 +295,13 @@ void loop()
         timer = millis();
       }
       //testServo.setSpeed(PIDController.calc(0, -1 * getDepth(), millis()));
-      myservo.write(PIDController.calc(0, -1 * getDepth(), milis()));
+      PID.compute();
+      myservo.write(PID_output + 90);
     }
     if (riseCompleted())
     {
       state = 1;
+      PID.stop();
       system.out.println("Sending...");
       try
       {
