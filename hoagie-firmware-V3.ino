@@ -30,7 +30,8 @@ double PID_input, PID_output, setpoint = 2.5;
 const double kP = 0, kI = 0, kD = 0;
 uint64_t detectionStartTime = 0;
 float depth = 0.0;
-Vector<uint32_t> pressure_data;
+//Vector<uint32_t> pressure_data;
+packet pressure_data[] = [128];
 
 struct packet {
     uint32_t time;
@@ -68,12 +69,30 @@ bool riseCompleted() {
     return getDepth() <= 0;
 }
 
-void transmit(const String &message) {
-    SENDER.begin();
-    SENDER.openWritingPipe(S_ADDRESS);
-    SENDER.setPALevel(RF24_PA_MIN);
-    SENDER.write(message.c_str(), message.length());
+void transmit(String message)
+{
+  // Transmit Code
+  SENDER.begin();
+  SENDER.openWritingPipe(S_ADDRESS);
+  SENDER.setPALevel(RF24_PA_MIN);
+
+  const char text[] = message;
+  SENDER.write(&text, sizeof(text));
+  delay(1000);
+  sender.closeWritingPipe();
 }
+
+int64_t packetToBin(packet data[], TEAM_NAME)
+{
+  int64_t bin = 0;
+  bin |= (TEAM_NAME << 56);
+  bin |= (data[0].time << 48);
+  bin |= (data[0].pressure << 32);
+  bin |= (data[1].time << 16);
+  bin |= (data[1].pressure);
+  return bin;
+}
+
 
 String receive() {
     RECEIVER.begin();
@@ -103,7 +122,7 @@ void loop() {
         case 2: // Diving
             Serial.println("Diving");
             if (millis() - timer >= 5000) {
-                pressure_data.push_back(getDepth());
+                pressure_data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR)));
                 timer = millis();
             }
             PID_input = getDepth();
@@ -118,7 +137,7 @@ void loop() {
         case 3: // Rising
             Serial.println("Rising");
             if (millis() - timer >= 5000) {
-                pressure_data.push_back(getDepth());
+                pressure_data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR)));
                 timer = millis();
             }
             PID_input = getDepth();
@@ -127,7 +146,8 @@ void loop() {
             if (riseCompleted()) {
                 state = 1;
                 PID.stop();
-                transmit("Data Sent");
+                message = packetToBin(data, TEAM_NAME);
+                transmit(message);
             }
             break;
         default:
