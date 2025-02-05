@@ -4,7 +4,6 @@
 #include "MS5837.h"
 #include "ArduPID.h"
 #include <Servo.h>
-#include <Vector.h>
 
 /* Pin definitions */
 const int PIN_SERVO_LEFT = 3;
@@ -18,6 +17,7 @@ const byte R_ADDRESS[6] = "00002";
 const float PRESSURE_THRESHOLD = 100.0;
 const uint64_t TIME_DIVE = 10000;
 const float POOL_DEPTH = 10.0;
+const float TARGET_DEPTH = 2.5;
 const uint8_t SERVO_DIVE = 0;
 const uint8_t SERVO_RISE = 180;
 const uint8_t SERVO_COAST = 90;
@@ -58,11 +58,7 @@ float getDepth() {
 
 bool diveCompleted() {
     depth = getDepth();
-    if (depth >= POOL_DEPTH) {
-        if (detectionStartTime == 0) detectionStartTime = millis();
-        return (millis() - detectionStartTime >= TIME_DIVE);
-    }
-    return false;
+    return depth >= TARGET_DEPTH;
 }
 
 bool riseCompleted() {
@@ -110,6 +106,7 @@ String receive() {
 void loop() {
     static uint8_t state = 1;
     static uint64_t timer = millis();
+    static uint64_t message;
     switch (state) {
         case 1: // Wait State
             Serial.println("Waiting for signal");
