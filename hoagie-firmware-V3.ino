@@ -143,7 +143,7 @@ void loop() {
             if (riseCompleted()) {
                 state = 1;
                 PID.stop();
-                message = packetToBin(data, TEAM_NAME);
+                message = packetToBin(pressure_data, TEAM_NAME);
                 transmit(message);
             }
             break;
