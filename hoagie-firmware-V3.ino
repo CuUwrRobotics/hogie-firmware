@@ -151,7 +151,7 @@ void loop() {
             break;
         case 4://waiting state
             pressure_data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR)));
-            if (!(TIME_DIVE - ((millis() / 100) - Time_of_Dive))) state = 3;
+            if ((TIME_DIVE - ((millis() / 100) - Time_of_Dive)) < 0) state = 3;
             break;
         default:
             Serial.println("Error: Invalid state");
