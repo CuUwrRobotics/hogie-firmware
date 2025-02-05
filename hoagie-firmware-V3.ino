@@ -15,7 +15,8 @@ const byte R_ADDRESS[6] = "00002";
 
 /* Constants */
 const float PRESSURE_THRESHOLD = 100.0;
-const uint64_t TIME_DIVE = 10000;
+const uint64_t TIME_DIVE = 45;
+uint64_t Time_of_Dive = 0;
 const float POOL_DEPTH = 10.0;
 const float TARGET_DEPTH = 2.5;
 const uint8_t SERVO_DIVE = 0;
@@ -126,9 +127,10 @@ void loop() {
             PID.compute();
             myServo.write(PID_output + 90);
             if (diveCompleted()) {
-                state = 3;
+                state = 4;
                 PID.reset();
                 setpoint = 0;
+                Time_of_Dive = timer / 100;
             }
             break;
         case 3: // Rising
@@ -147,6 +149,9 @@ void loop() {
                 transmit(message);
             }
             break;
+        case 4://waiting state
+            pressure_data.append(packet(trueTime(), analogRead(PIN_PRESSURE_SENSOR)));
+            if (!(TIME_DIVE - ((millis() / 100) - Time_of_Dive))) state = 3;
         default:
             Serial.println("Error: Invalid state");
             while (1);
