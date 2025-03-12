@@ -109,6 +109,10 @@ bool riseCompleted() {
 //     else return "";
 // }
 
+bool gernade(){
+  return millis() > 30000;
+}
+
 uint64_t init_state = 0;
 
 void loop() {
@@ -119,13 +123,12 @@ void loop() {
         case 1: // Wait State
             Serial.println("Waiting for signal");
             //transmit_str("Requesting time");
-            if (true){//receive_str() == "START") {
+            if (gernade()){//receive_str() == "START") {
                 state = 2;
                 //PID.start();
                 init_state = millis();
                 myServo.write(90);
             }
-            state = 2;
             break;
         case 2: // Diving
             Serial.println("Diving");
