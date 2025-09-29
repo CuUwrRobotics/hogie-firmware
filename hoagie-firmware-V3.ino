@@ -7,6 +7,7 @@
 #include <Vector.h>
 #include "printf.h"
 
+// Packet struct
 struct packet {
     packet() {companyName = 69420; seconds = 0;
         depth = 0.0; pressure = 0.0;}
@@ -51,9 +52,8 @@ uint64_t detectionStartTime = 0;
 float depth = 0.0;
 packet payload, temp;
 Vector<packet> diveData;
-String d = "Diving";
-String r = "Rising";
 
+// Initialization
 void setup() {
     //transmit_int(75);
     Serial.begin(9600);
@@ -72,6 +72,7 @@ void setup() {
     transmit_int(76);
 }
 
+// Calculates depth from pressure sensor value
 float getDepth() {
     float density = 1.025;
     float gravity = 9.81;
@@ -79,15 +80,18 @@ float getDepth() {
     return (pressure / (density * gravity)) * 3.28084;
 }
 
+// Returns true if target diving depth has been reached
 bool diveCompleted() {
     depth = getDepth();
     return depth >= TARGET_DEPTH;
 }
 
+// Returns true if target rising depth reaches or exceedes 0 (water surface)
 bool riseCompleted() {
     return getDepth() <= 0;
 }
 
+// Sends packet from Hoagie to Topside
 void transmit_packet(Vector<packet> d) {
     int s = d.size();
     radio.stopListening();
@@ -97,40 +101,43 @@ void transmit_packet(Vector<packet> d) {
     radio.startListening();
 }
 
+// Sends int from Hoagie to Topside
 void transmit_int(int s) {
     radio.stopListening();
     uint8_t ss = sizeof(s);
     Serial.println(s);
-    radio.write(&s, ss);
+    radio.write(&s, 4);
     radio.startListening();
 }
 
+// Recieves int from Topside
 int receive_int() {
     uint8_t pipe;
     int payload;
     if (radio.available(&pipe)) {              // is there a payload? get the pipe number that received it
         uint8_t bytes = radio.getPayloadSize();  // get the size of the payload
-        radio.read(&payload, bytes);
+        radio.read(&payload, 4);
         return payload;
     }
     else return -1;
 }
 
+// Main loop
 void loop() {
     static uint8_t state = 1;
     static uint64_t timer = millis();
     switch (state) {
         case 1: // Wait State
             Serial.println("Waiting for signal");
-            //transmit_str("Requesting time");
-            //if (receive_str() == "START") {
-            //    state = 2;
+            transmit_int(75);
+            if (receive_int() == 76) {
+                state = 2;
             //    PID.start();
-            //}
-            transmit_int(77); // Timer Start
-            delay(150000); // Testing Timer, in ms
-            transmit_int(78); // Timer End
-            state = 2;
+            }
+            //transmit_int(77); // Timer Start
+            //delay(150000); // Testing Timer, in ms
+            //transmit_int(78); // Timer End
+            //state = 2;
             break;
         case 2: // Diving
             Serial.println("Diving");
@@ -186,7 +193,10 @@ void loop() {
             break;
         default:
             Serial.println("Error: Invalid state");
+            Serial.println(state);
             transmit_int(99);
             while (1);
     }
+}
+
 }
